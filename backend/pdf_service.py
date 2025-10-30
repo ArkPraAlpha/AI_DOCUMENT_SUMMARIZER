@@ -5,17 +5,16 @@ from langchain_chroma import Chroma
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from dotenv import load_dotenv
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
 
 load_dotenv()
 # HuggingFace local cache
-os.environ["HF_HOME"] = r"D:\Gen AI\Code\CACHE"
+os.environ["HF_HOME"] = "/tmp/huggingface_cache"
 
-from dotenv import load_dotenv
-load_dotenv()
 
 def get_llm(temperature=0.3):
   
@@ -28,8 +27,12 @@ def get_llm(temperature=0.3):
     )
 
 
+
 def get_embeddings():
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return NVIDIAEmbeddings(
+        model="nvidia/nv-embedqa-e5-v5",
+        api_key=os.getenv("NVIDIA_API_KEY")
+    )
 
 
 def get_pdf_text(file_paths):
@@ -60,7 +63,7 @@ def get_vectorstore(text_chunks, persist_directory="db/chroma_store"):
     """
     os.makedirs(persist_directory, exist_ok=True)
 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embeddings = get_embeddings()
 
     # Create persistent Chroma vectorstore
     vectorstore = Chroma.from_texts(

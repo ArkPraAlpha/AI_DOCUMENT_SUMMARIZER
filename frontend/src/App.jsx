@@ -200,7 +200,7 @@ export default function DocumentSummarizerApp() {
       formData.append("session_id", sessionId);
       formData.append("question", userQuestion);
 
-      const response = await fetch("http://localhost:8000/chat/", {
+      const response = await fetch(`${BACKEND_URL}/chat/`, {
         method: "POST",
         body: formData,
       });
@@ -267,7 +267,7 @@ export default function DocumentSummarizerApp() {
     setShowMcqs(true);
 
     try {
-      const response = await fetch(`http://localhost:8000/mcqs/${sessionId}`);
+      const response = await fetch(`${BACKEND_URL}/mcqs/${sessionId}`);
       if (!response.ok) throw new Error("Failed to fetch MCQs");
 
       const data = await response.json();

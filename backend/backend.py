@@ -1,6 +1,7 @@
+# backend.py
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import shutil, os, uuid
+import os, io, uuid, fitz  # PyMuPDF for PDF parsing
 
 from pdf_service import (
     get_pdf_text,
@@ -11,31 +12,36 @@ from pdf_service import (
     generate_mcqs,
 )
 
-app = FastAPI()
+# Initialize FastAPI app
+app = FastAPI(title="AI Document Summarizer Backend")
 
-# Allow frontend (React) to call backend
+# Enable CORS for frontend (adjust origins in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For dev; restrict in prod
+    allow_origins=["*"],  # Replace with frontend URL for security in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Ensure uploads directory exists
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# In-memory session storage
 conversations = {}
+
+@app.get("/")
+def root():
+    """Root endpoint to verify backend is running."""
+    return {"message": "✅ FastAPI Summarizer Backend is running on Cloud Run!"}
 
 
 @app.post("/process")
 async def process_pdf(files: list[UploadFile] = File(...)):
     """
-    Upload one or more PDFs, extract text, create embeddings, and conversation chain.
+    Upload PDFs, extract text, and initialize a conversation session.
     """
-    import io, uuid
-    import fitz  
-
-
     text = ""
     for file in files:
         contents = await file.read()
@@ -43,21 +49,25 @@ async def process_pdf(files: list[UploadFile] = File(...)):
         for page in pdf:
             text += page.get_text()
 
-    # ✅ Generate unique session ID
+    # Create unique session
     session_id = str(uuid.uuid4())
 
-    # ✅ --- ADD THESE LINES BELOW ---
+    # Chunk text and create vectorstore
     chunks = get_text_chunks(text)
     vectorstore = get_vectorstore(chunks, persist_directory=f"chroma_{session_id}")
     chain = get_conversation_chain(vectorstore)
+
+    # Store conversation in memory
     conversations[session_id] = {"chain": chain, "text": text}
-    # ✅ ------------------------------
 
     return {"session_id": session_id, "message": "PDF processed successfully!"}
 
+
 @app.post("/chat/")
 async def chat(session_id: str = Form(...), question: str = Form(...)):
-    """Ask a question to the chatbot based on uploaded PDF context."""
+    """
+    Ask a contextual question based on uploaded PDF.
+    """
     if session_id not in conversations:
         raise HTTPException(status_code=400, detail="Invalid session_id")
 
@@ -75,7 +85,9 @@ async def chat(session_id: str = Form(...), question: str = Form(...)):
 
 @app.get("/summary/{session_id}")
 async def summary(session_id: str):
-    """Generate summary of the uploaded PDF."""
+    """
+    Generate summary of the uploaded PDF using NVIDIA API.
+    """
     if session_id not in conversations:
         raise HTTPException(status_code=400, detail="Invalid session_id")
 
@@ -86,26 +98,32 @@ async def summary(session_id: str):
 
 @app.get("/mcqs/{session_id}")
 async def mcqs(session_id: str):
-    """Generate MCQs from the uploaded PDF."""
+    """
+    Generate MCQs from the uploaded PDF using NVIDIA API.
+    """
     if session_id not in conversations:
         raise HTTPException(status_code=400, detail="Invalid session_id")
 
     text = conversations[session_id]["text"]
     mcq_text = generate_mcqs(text)
 
-    # Parse text to structured list (optional improvement)
     mcq_list = []
     current_q = {}
+
     for line in mcq_text.splitlines():
         line = line.strip()
-        if line.startswith(tuple(str(i) + "." for i in range(1, 21))):
+        # Identify questions
+        if line.startswith(tuple(str(i) + "." for i in range(1, 51))):
             if current_q:
                 mcq_list.append(current_q)
             current_q = {"question": line, "options": [], "answer": ""}
+        # Identify options
         elif line.startswith(("A)", "B)", "C)", "D)")):
             current_q.setdefault("options", []).append(line)
+        # Identify answer
         elif "Answer" in line or "Correct" in line:
             current_q["answer"] = line
+
     if current_q:
         mcq_list.append(current_q)
 
