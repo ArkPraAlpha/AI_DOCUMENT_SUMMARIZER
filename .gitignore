@@ -28,6 +28,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+.dockerignore
 .venv/
 venv/
 pip-wheel-metadata/
